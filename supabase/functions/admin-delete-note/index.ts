@@ -22,8 +22,9 @@ function corsHeaders(req: Request): HeadersInit {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Headers':
-      'authorization, x-client-info, apikey, content-type',
+      'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-api-version',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
   }
 }
 

@@ -112,22 +112,39 @@ export async function deleteNote(id: string): Promise<void> {
     throw new Error(CLOUD_DELETE_BLOCKED_TH)
   }
 
-  const { data, error } = await supabase.functions.invoke('admin-delete-note', {
-    body: { id, pin },
-  })
-
-  if (error) {
-    console.error('admin-delete-note invoke failed', error.message)
-    const err = new Error(CLOUD_DELETE_BLOCKED_TH) as Error & {
-      cause?: unknown
-    }
-    err.cause = error
-    throw err
+  // Call the Edge Function with explicit fetch so browser CORS + auth headers
+  // match what the function allows (functions.invoke can send extra headers).
+  const base = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim()
+  const anon = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim()
+  if (!base || !anon) {
+    throw new Error(CLOUD_DELETE_BLOCKED_TH)
   }
 
-  const payload = data as { ok?: boolean; error?: string } | null
-  if (!payload?.ok) {
-    console.error('admin-delete-note rejected', payload?.error ?? 'unknown')
+  let res: Response
+  try {
+    res = await fetch(`${base.replace(/\/$/, '')}/functions/v1/admin-delete-note`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${anon}`,
+        apikey: anon,
+      },
+      body: JSON.stringify({ id, pin }),
+    })
+  } catch (error) {
+    console.error('admin-delete-note network failed', error)
+    throw new Error(CLOUD_DELETE_BLOCKED_TH)
+  }
+
+  let payload: { ok?: boolean; error?: string } | null = null
+  try {
+    payload = (await res.json()) as { ok?: boolean; error?: string }
+  } catch {
+    payload = null
+  }
+
+  if (!res.ok || !payload?.ok) {
+    console.error('admin-delete-note rejected', res.status, payload?.error ?? 'unknown')
     throw new Error(CLOUD_DELETE_BLOCKED_TH)
   }
 }
