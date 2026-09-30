@@ -1,37 +1,48 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Gallery } from './components/Gallery'
 import { PlantForm } from './components/PlantForm'
-import { loadNotes, saveNotes } from './lib/storage'
+import { insertNote, isSharedGallery, listNotes } from './lib/notesApi'
 import type { AccentColor, Note } from './types/note'
 
 type View = 'plant' | 'gallery'
 
-function createId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return `note-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
 export default function App() {
-  const [notes, setNotes] = useState<Note[]>(() => loadNotes())
+  const [notes, setNotes] = useState<Note[]>([])
   const [view, setView] = useState<View>('plant')
+  const [loading, setLoading] = useState(true)
+  const [plantError, setPlantError] = useState('')
+  const shared = isSharedGallery()
 
   useEffect(() => {
-    saveNotes(notes)
-  }, [notes])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const loaded = await listNotes()
+        if (!cancelled) setNotes(loaded)
+      } catch (err) {
+        console.error('Failed to load notes', err)
+        if (!cancelled) setNotes([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handlePlant = useCallback(
-    (input: { nickname: string; text: string; accent: AccentColor }) => {
-      const next: Note = {
-        id: createId(),
-        nickname: input.nickname,
-        text: input.text,
-        accent: input.accent,
-        createdAt: Date.now(),
+    async (input: { nickname: string; text: string; accent: AccentColor }) => {
+      setPlantError('')
+      try {
+        const next = await insertNote(input)
+        setNotes((prev) => [next, ...prev.filter((n) => n.id !== next.id)])
+        setView('gallery')
+      } catch (err) {
+        console.error('Failed to plant note', err)
+        setPlantError('ปักข้อความไม่สำเร็จ กรุณาลองใหม่')
+        throw err
       }
-      setNotes((prev) => [next, ...prev])
-      setView('gallery')
     },
     [],
   )
@@ -61,20 +72,33 @@ export default function App() {
           onClick={() => setView('gallery')}
           aria-current={view === 'gallery' ? 'page' : undefined}
         >
-          ดูกระดาน ({notes.length})
+          ดูกระดาน ({loading ? '…' : notes.length})
         </button>
       </nav>
 
       <main className="main">
         {view === 'plant' ? (
-          <PlantForm onPlant={handlePlant} />
+          <>
+            <PlantForm onPlant={handlePlant} />
+            {plantError ? (
+              <p className="field__feedback field__feedback--error" role="alert">
+                {plantError}
+              </p>
+            ) : null}
+          </>
+        ) : loading ? (
+          <p className="section-hint">กำลังโหลดกระดาน…</p>
         ) : (
           <Gallery notes={notes} onGoPlant={() => setView('plant')} />
         )}
       </main>
 
       <footer className="footer">
-        <p>บันทึกในเบราว์เซอร์นี้เท่านั้น · ไม่มีบัญชี · MVP</p>
+        <p>
+          {shared
+            ? 'กระดานสาธารณะร่วมกัน · ไม่มีบัญชี · MVP'
+            : 'บันทึกในเบราว์เซอร์นี้เท่านั้น · ไม่มีบัญชี · MVP'}
+        </p>
       </footer>
     </div>
   )

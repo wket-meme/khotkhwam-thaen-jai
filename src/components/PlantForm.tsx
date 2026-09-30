@@ -4,13 +4,14 @@ import type { AccentColor } from '../types/note'
 import { ACCENT_COLORS, MAX_NOTE_LENGTH } from '../types/note'
 
 interface PlantFormProps {
-  onPlant: (input: { nickname: string; text: string; accent: AccentColor }) => void
+  onPlant: (input: { nickname: string; text: string; accent: AccentColor }) => void | Promise<void>
 }
 
 export function PlantForm({ onPlant }: PlantFormProps) {
   const [nickname, setNickname] = useState('')
   const [text, setText] = useState('')
   const [accent, setAccent] = useState<AccentColor>('red')
+  const [submitting, setSubmitting] = useState(false)
 
   const trimmedNick = nickname.trim().slice(0, 20)
   const trimmed = text.trim()
@@ -42,16 +43,24 @@ export function PlantForm({ onPlant }: PlantFormProps) {
   const counterNearLimit = text.length >= MAX_NOTE_LENGTH - 5
   const counterOver = text.length > MAX_NOTE_LENGTH
 
-  function handleSubmit(e: FormEvent) {
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (isInvalid) return
-    onPlant({
-      nickname: trimmedNick,
-      text: trimmed,
-      accent,
-    })
-    setNickname('')
-    setText('')
+    if (isInvalid || submitting) return
+    setSubmitting(true)
+    try {
+      await onPlant({
+        nickname: trimmedNick,
+        text: trimmed,
+        accent,
+      })
+      setNickname('')
+      setText('')
+    } catch {
+      // Parent surfaces error; keep form values for retry
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -127,7 +136,7 @@ export function PlantForm({ onPlant }: PlantFormProps) {
         </div>
       </fieldset>
 
-      <button type="submit" className="btn-plant" disabled={isInvalid}>
+      <button type="submit" className="btn-plant" disabled={isInvalid || submitting}>
         ปักลงกระดาน
       </button>
     </form>

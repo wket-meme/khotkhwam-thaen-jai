@@ -7,8 +7,23 @@ Thai display title: **ข้อความแทนใจ**
 ## Stack
 
 - Vite + React + TypeScript
-- Persistence: `localStorage` key `khotkhwam-thaen-jai-notes-v1` only
-- No accounts, no backend, no `.env`
+- Persistence: **Supabase** shared gallery when configured, otherwise `localStorage` (`khotkhwam-thaen-jai-notes-v1`)
+- No accounts / auth
+
+## Environment
+
+Copy `.env.example` → `.env.local` (gitignored) and fill in:
+
+| Variable | Description |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon (public) key |
+
+Without both vars, the app runs in **local-only** mode (browser `localStorage`).
+
+**Vercel / production:** set the same two names under Project → Settings → Environment Variables.
+
+SQL schema + RLS: run `supabase/migrations/001_notes.sql` in the Supabase SQL editor (or via Supabase CLI).
 
 ## Run locally
 
@@ -33,15 +48,14 @@ Do not `git push` or publish from this MVP unless explicitly asked.
 
 - **Plant a note** — optional nickname (max 20), text max 40 chars, pick one of 4 highlighter accents (red / blue / green / purple)
 - **Profanity filter** — client-side Thai + English blocklist on nickname and text; blocks submit with Thai error message (`src/lib/profanity.ts`)
-- **Public gallery** — list all planted notes on the cream board (notes that passed the filter)
-- **Persistence** — reload keeps notes via `localStorage`
+- **Public gallery** — list planted notes on the cream board; shared across visitors when Supabase is configured
+- **Persistence** — Supabase `notes` table (body↔text, color↔accent) or `localStorage` fallback
 - **Thai UI** — title and main labels in Thai
 - **Theme** — cream paper background, ink feel, note slips with highlighter edge strip
 
 ## Stubbed / out of scope
 
 - No user accounts or auth
-- No shared/server-side gallery across devices (localStorage only)
-- No moderation beyond client blocklist
+- No server-side moderation beyond RLS checks + client blocklist
 - No drawings / canvas (text only)
-- Not published to Vercel yet
+- Not published until Pace says
