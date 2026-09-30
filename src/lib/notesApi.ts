@@ -1,4 +1,5 @@
 import type { AccentColor, Note } from '../types/note'
+import { getSessionAdminPin } from './admin'
 import { loadNotes, saveNotes } from './storage'
 import { isSupabaseConfigured, supabase } from './supabase'
 
@@ -12,9 +13,9 @@ type DbNote = {
 
 const ACCENTS = new Set<string>(['red', 'blue', 'green', 'purple'])
 
-/** Thrown when Supabase RLS blocks delete (expected until Edge Function / service role). */
+/** Shown when cloud admin delete is refused or misconfigured. */
 export const CLOUD_DELETE_BLOCKED_TH =
-  'ลบบนคลาวด์ยังไม่เปิด — ลบในโหมด local ได้ หรือลบใน Supabase Dashboard'
+  'ลบบนคลาวด์ไม่สำเร็จ — ตรวจ PIN / Edge Function หรือลบใน Supabase Dashboard'
 
 function createLocalId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -94,9 +95,10 @@ export async function insertNote(input: {
 }
 
 /**
- * Delete a note. localStorage: always works.
- * Supabase: attempts delete; RLS currently has no anon DELETE policy, so this
- * typically fails — callers should show CLOUD_DELETE_BLOCKED_TH.
+ * Delete a note.
+ * localStorage: works after PIN unlock (client UX gate).
+ * Supabase: calls Edge Function `admin-delete-note` with session PIN.
+ * RLS has no anon DELETE — never delete via the anon client.
  */
 export async function deleteNote(id: string): Promise<void> {
   if (!supabase) {
@@ -105,20 +107,27 @@ export async function deleteNote(id: string): Promise<void> {
     return
   }
 
-  const { error, count } = await supabase
-    .from('notes')
-    .delete({ count: 'exact' })
-    .eq('id', id)
+  const pin = getSessionAdminPin()
+  if (!pin) {
+    throw new Error(CLOUD_DELETE_BLOCKED_TH)
+  }
+
+  const { data, error } = await supabase.functions.invoke('admin-delete-note', {
+    body: { id, pin },
+  })
 
   if (error) {
-    console.error('deleteNote failed', error)
-    const err = new Error(CLOUD_DELETE_BLOCKED_TH) as Error & { cause?: unknown }
+    console.error('admin-delete-note invoke failed', error.message)
+    const err = new Error(CLOUD_DELETE_BLOCKED_TH) as Error & {
+      cause?: unknown
+    }
     err.cause = error
     throw err
   }
 
-  // RLS may silently delete 0 rows without error depending on config
-  if (count === 0) {
+  const payload = data as { ok?: boolean; error?: string } | null
+  if (!payload?.ok) {
+    console.error('admin-delete-note rejected', payload?.error ?? 'unknown')
     throw new Error(CLOUD_DELETE_BLOCKED_TH)
   }
 }

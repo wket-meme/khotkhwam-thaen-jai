@@ -33,3 +33,6 @@ dist-ssr
 *.sw?
 *~
 .fleet
+
+# Supabase CLI local cache
+supabase/.temp/
