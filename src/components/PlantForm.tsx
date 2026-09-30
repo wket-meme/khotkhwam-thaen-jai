@@ -40,9 +40,12 @@ export function PlantForm({ onPlant }: PlantFormProps) {
   const hasProfanity = containsProfanity(trimmed, trimmedNick)
   const isInvalid = isEmpty || isOverLimit || hasProfanity
 
-  const counterNearLimit = text.length >= MAX_NOTE_LENGTH - 5
+  const counterAtMax = text.length >= MAX_NOTE_LENGTH
+  const counterNearLimit = !counterAtMax && text.length >= MAX_NOTE_LENGTH - 5
   const counterOver = text.length > MAX_NOTE_LENGTH
-
+  const atMaxHint = counterAtMax
+    ? `ครบ ${MAX_NOTE_LENGTH} ตัวอักษรแล้ว — พิมพ์ต่อไม่ได้`
+    : ''
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -102,13 +105,24 @@ export function PlantForm({ onPlant }: PlantFormProps) {
         />
         <div className="field__meta" id="message-feedback">
           <span
-            className={`field__feedback${fieldError ? ' field__feedback--error' : isEmpty ? ' field__feedback--hint' : ''}`}
-            role={fieldError ? 'alert' : undefined}
+            className={`field__feedback${
+              fieldError
+                ? ' field__feedback--error'
+                : atMaxHint
+                  ? ' field__feedback--warn'
+                  : isEmpty
+                    ? ' field__feedback--hint'
+                    : ''
+            }`}
+            role={fieldError || atMaxHint ? 'status' : undefined}
+            aria-live={fieldError || atMaxHint ? 'polite' : undefined}
           >
-            {fieldError || (isEmpty ? 'กรุณาเขียนข้อความสั้น ๆ' : '\u00a0')}
+            {fieldError || atMaxHint || (isEmpty ? 'กรุณาเขียนข้อความสั้น ๆ' : '\u00a0')}
           </span>
           <span
-            className={`field__counter${counterOver ? ' is-over' : counterNearLimit ? ' is-near' : ''}`}
+            className={`field__counter${
+              counterOver ? ' is-over' : counterAtMax ? ' is-at-max' : counterNearLimit ? ' is-near' : ''
+            }`}
           >
             {text.length}/{MAX_NOTE_LENGTH}
           </span>
