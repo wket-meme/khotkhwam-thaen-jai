@@ -1,17 +1,33 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Gallery } from './components/Gallery'
 import { PlantForm } from './components/PlantForm'
-import { insertNote, isSharedGallery, listNotes } from './lib/notesApi'
+import {
+  isAdminPinConfigured,
+  isAdminUnlocked,
+  lockAdmin,
+  tryUnlockAdmin,
+} from './lib/admin'
+import {
+  CLOUD_DELETE_BLOCKED_TH,
+  deleteNote,
+  insertNote,
+  isSharedGallery,
+  listNotes,
+} from './lib/notesApi'
 import type { AccentColor, Note } from './types/note'
-
-type View = 'plant' | 'gallery'
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
-  const [view, setView] = useState<View>('plant')
   const [loading, setLoading] = useState(true)
   const [plantError, setPlantError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [adminUnlocked, setAdminUnlocked] = useState(() => isAdminUnlocked())
+  const [pinPromptOpen, setPinPromptOpen] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
   const shared = isSharedGallery()
+  const pinConfigured = isAdminPinConfigured()
 
   useEffect(() => {
     let cancelled = false
@@ -37,7 +53,6 @@ export default function App() {
       try {
         const next = await insertNote(input)
         setNotes((prev) => [next, ...prev.filter((n) => n.id !== next.id)])
-        setView('gallery')
       } catch (err) {
         console.error('Failed to plant note', err)
         setPlantError('ปักข้อความไม่สำเร็จ กรุณาลองใหม่')
@@ -46,6 +61,43 @@ export default function App() {
     },
     [],
   )
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!isAdminUnlocked()) return
+    setDeleteError('')
+    setDeletingId(id)
+    try {
+      await deleteNote(id)
+      setNotes((prev) => prev.filter((n) => n.id !== id))
+    } catch (err) {
+      console.error('Failed to delete note', err)
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : CLOUD_DELETE_BLOCKED_TH
+      setDeleteError(msg)
+    } finally {
+      setDeletingId(null)
+    }
+  }, [])
+
+  function handleUnlockSubmit(e: FormEvent) {
+    e.preventDefault()
+    setPinError('')
+    if (tryUnlockAdmin(pinInput)) {
+      setAdminUnlocked(true)
+      setPinPromptOpen(false)
+      setPinInput('')
+    } else {
+      setPinError('รหัสไม่ถูกต้อง')
+    }
+  }
+
+  function handleLock() {
+    lockAdmin()
+    setAdminUnlocked(false)
+    setDeleteError('')
+  }
 
   return (
     <div className="app">
@@ -57,41 +109,31 @@ export default function App() {
         </p>
       </header>
 
-      <nav className="tabs" aria-label="เมนูหลัก">
-        <button
-          type="button"
-          className={`tabs__btn${view === 'plant' ? ' is-active' : ''}`}
-          onClick={() => setView('plant')}
-          aria-current={view === 'plant' ? 'page' : undefined}
-        >
-          ปักข้อความ
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn${view === 'gallery' ? ' is-active' : ''}`}
-          onClick={() => setView('gallery')}
-          aria-current={view === 'gallery' ? 'page' : undefined}
-        >
-          ดูกระดาน ({loading ? '…' : notes.length})
-        </button>
-      </nav>
+      <div className="layout">
+        <aside className="layout__board panel">
+          <Gallery
+            notes={notes}
+            loading={loading}
+            adminUnlocked={adminUnlocked}
+            deletingId={deletingId}
+            onDelete={handleDelete}
+          />
+          {deleteError ? (
+            <p className="field__feedback field__feedback--error layout__alert" role="alert">
+              {deleteError}
+            </p>
+          ) : null}
+        </aside>
 
-      <main className="main">
-        {view === 'plant' ? (
-          <>
-            <PlantForm onPlant={handlePlant} />
-            {plantError ? (
-              <p className="field__feedback field__feedback--error" role="alert">
-                {plantError}
-              </p>
-            ) : null}
-          </>
-        ) : loading ? (
-          <p className="section-hint">กำลังโหลดกระดาน…</p>
-        ) : (
-          <Gallery notes={notes} onGoPlant={() => setView('plant')} />
-        )}
-      </main>
+        <section className="layout__plant panel panel--plant">
+          <PlantForm onPlant={handlePlant} />
+          {plantError ? (
+            <p className="field__feedback field__feedback--error" role="alert">
+              {plantError}
+            </p>
+          ) : null}
+        </section>
+      </div>
 
       <footer className="footer">
         <p>
@@ -99,6 +141,58 @@ export default function App() {
             ? 'กระดานสาธารณะร่วมกัน · ไม่มีบัญชี · MVP'
             : 'บันทึกในเบราว์เซอร์นี้เท่านั้น · ไม่มีบัญชี · MVP'}
         </p>
+        {pinConfigured ? (
+          <div className="footer__admin">
+            {adminUnlocked ? (
+              <button type="button" className="footer__admin-btn" onClick={handleLock}>
+                ล็อกแอดมิน
+              </button>
+            ) : pinPromptOpen ? (
+              <form className="footer__pin" onSubmit={handleUnlockSubmit}>
+                <label className="visually-hidden" htmlFor="admin-pin">
+                  รหัสแอดมิน
+                </label>
+                <input
+                  id="admin-pin"
+                  className="footer__pin-input"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="PIN"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                />
+                <button type="submit" className="footer__admin-btn">
+                  ปลดล็อก
+                </button>
+                <button
+                  type="button"
+                  className="footer__admin-btn footer__admin-btn--ghost"
+                  onClick={() => {
+                    setPinPromptOpen(false)
+                    setPinInput('')
+                    setPinError('')
+                  }}
+                >
+                  ยกเลิก
+                </button>
+                {pinError ? (
+                  <span className="field__feedback field__feedback--error" role="alert">
+                    {pinError}
+                  </span>
+                ) : null}
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="footer__admin-btn footer__admin-btn--ghost"
+                onClick={() => setPinPromptOpen(true)}
+              >
+                แอดมิน
+              </button>
+            )}
+          </div>
+        ) : null}
       </footer>
     </div>
   )

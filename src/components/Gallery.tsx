@@ -3,10 +3,19 @@ import { NoteCard } from './NoteCard'
 
 interface GalleryProps {
   notes: Note[]
-  onGoPlant?: () => void
+  loading?: boolean
+  adminUnlocked?: boolean
+  deletingId?: string | null
+  onDelete?: (id: string) => void
 }
 
-export function Gallery({ notes, onGoPlant }: GalleryProps) {
+export function Gallery({
+  notes,
+  loading,
+  adminUnlocked,
+  deletingId,
+  onDelete,
+}: GalleryProps) {
   const sorted = [...notes].sort((a, b) => b.createdAt - a.createdAt)
 
   return (
@@ -16,25 +25,32 @@ export function Gallery({ notes, onGoPlant }: GalleryProps) {
           กระดานข้อความ
         </h2>
         <p className="section-hint">
-          {sorted.length === 0
-            ? 'ยังไม่มีข้อความ — เป็นคนแรกที่ปักข้อความแทนใจ'
-            : `${sorted.length} ข้อความบนกระดาน`}
+          {loading
+            ? 'กำลังโหลดกระดาน…'
+            : sorted.length === 0
+              ? 'ยังไม่มีข้อความ — เป็นคนแรกที่ปักข้อความแทนใจ'
+              : `${sorted.length} ข้อความบนกระดาน`}
         </p>
       </div>
 
-      {sorted.length === 0 ? (
+      {loading ? (
+        <div className="gallery__empty">
+          <p className="gallery__empty-msg">กำลังโหลด…</p>
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="gallery__empty">
           <p className="gallery__empty-msg">กระดานว่างเปล่า… ลองปักข้อความสั้น ๆ จากใจ</p>
-          {onGoPlant ? (
-            <button type="button" className="btn-plant btn-plant--inline" onClick={onGoPlant}>
-              ไปปักข้อความ
-            </button>
-          ) : null}
         </div>
       ) : (
         <div className="gallery__board">
           {sorted.map((note) => (
-            <NoteCard key={note.id} note={note} />
+            <NoteCard
+              key={note.id}
+              note={note}
+              showDelete={adminUnlocked}
+              onDelete={onDelete}
+              deleting={deletingId === note.id}
+            />
           ))}
         </div>
       )}

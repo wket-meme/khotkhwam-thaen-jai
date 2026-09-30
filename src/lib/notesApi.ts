@@ -12,6 +12,10 @@ type DbNote = {
 
 const ACCENTS = new Set<string>(['red', 'blue', 'green', 'purple'])
 
+/** Thrown when Supabase RLS blocks delete (expected until Edge Function / service role). */
+export const CLOUD_DELETE_BLOCKED_TH =
+  'ลบบนคลาวด์ยังไม่เปิด — ลบในโหมด local ได้ หรือลบใน Supabase Dashboard'
+
 function createLocalId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
@@ -87,4 +91,34 @@ export async function insertNote(input: {
   }
 
   return rowToNote(data as DbNote)
+}
+
+/**
+ * Delete a note. localStorage: always works.
+ * Supabase: attempts delete; RLS currently has no anon DELETE policy, so this
+ * typically fails — callers should show CLOUD_DELETE_BLOCKED_TH.
+ */
+export async function deleteNote(id: string): Promise<void> {
+  if (!supabase) {
+    const existing = loadNotes()
+    saveNotes(existing.filter((n) => n.id !== id))
+    return
+  }
+
+  const { error, count } = await supabase
+    .from('notes')
+    .delete({ count: 'exact' })
+    .eq('id', id)
+
+  if (error) {
+    console.error('deleteNote failed', error)
+    const err = new Error(CLOUD_DELETE_BLOCKED_TH) as Error & { cause?: unknown }
+    err.cause = error
+    throw err
+  }
+
+  // RLS may silently delete 0 rows without error depending on config
+  if (count === 0) {
+    throw new Error(CLOUD_DELETE_BLOCKED_TH)
+  }
 }
